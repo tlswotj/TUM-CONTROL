@@ -122,43 +122,32 @@ class Logger:
         self.current_step = 0
 
     def logging_step(self, step, u0, MPC_stats, current_ref_traj, x_next_sim, x_next_sim_disturbed, x_next_MPC):
-        self.current_step = step
-        # log solution
-        if self.Nsim is not None: 
-            for j in range(self.nu):
-                self.simU[self.current_step, j]      = u0[j]    
-            # Debugging
-            for j in range(len(MPC_stats)):
-                self.simSolverDebug[self.current_step, j] = MPC_stats[j]
-            # log current reference yaw and velocities 
-            for j in range(self.nx_sim):
-                self.CiLX[self.current_step+1, j]      = x_next_sim[j]
-            for j in range(self.nx_sim):
-                self.DisturbedX[self.current_step+1, j]= x_next_sim_disturbed[j]
-            for j in range(self.nx):
-                self.MPC_SimX[self.current_step+1, j]  = x_next_MPC[j]
-            self.simREF[self.current_step, 0] = current_ref_traj['pos_x'][0]
-            self.simREF[self.current_step, 1] = current_ref_traj['pos_y'][0]
-            self.simREF[self.current_step, 2] = current_ref_traj['ref_yaw'][0]
-            self.simREF[self.current_step, 3] = current_ref_traj['ref_v'][0]
-        else:
-            self.CiLX           = np.c_[self.CiLX,x_next_sim]
-            self.DisturbedX     = np.c_[self.DisturbedX,x_next_sim_disturbed]
-            self.MPC_SimX       = np.c_[self.MPC_SimX,x_next_MPC]
-            self.simU           = np.c_[self.simU,u0]
-            self.simREF         = np.c_[self.simREF, np.array([current_ref_traj['pos_x'][0],current_ref_traj['pos_y'][0],current_ref_traj['ref_yaw'][0],current_ref_traj['ref_v'][0]])]
-            self.simSolverDebug = np.c_[self.simSolverDebug,MPC_stats]
+        max_idx = min(step, self.simU.shape[0] - 1)
+        self.current_step = max_idx
+        # 아래 모든 배열 접근에 max_idx를 사용
+        for j in range(self.nu):
+            self.simU[max_idx, j]      = u0[j]    
+        for j in range(len(MPC_stats)):
+            self.simSolverDebug[max_idx, j] = MPC_stats[j]
+        for j in range(self.nx_sim):
+            self.CiLX[max_idx+1, j]      = x_next_sim[j]
+            self.DisturbedX[max_idx+1, j]= x_next_sim_disturbed[j]
+        for j in range(self.nx):
+            self.MPC_SimX[max_idx+1, j]  = x_next_MPC[j]
+        self.simREF[max_idx, 0] = current_ref_traj['pos_x'][0]
+        self.simREF[max_idx, 1] = current_ref_traj['pos_y'][0]
+        self.simREF[max_idx, 2] = current_ref_traj['ref_yaw'][0]
+        self.simREF[max_idx, 3] = current_ref_traj['ref_v'][0]
 
         # log lateral and velocity deviation
         _, lat_dev = LonLatDeviations(
-            self.CiLX[self.current_step, 2], self.CiLX[self.current_step, 0], self.CiLX[self.current_step, 1],
-            self.simREF[self.current_step, 0], self.simREF[self.current_step, 1]
+            self.CiLX[max_idx, 2], self.CiLX[max_idx, 0], self.CiLX[max_idx, 1],
+            self.simREF[max_idx, 0], self.simREF[max_idx, 1]
         )
-        vel_dev = self.CiLX[self.current_step, 3] - self.simREF[self.current_step, 3]
-        self.lat_devs[self.current_step] = lat_dev
-        self.vel_devs[self.current_step] = vel_dev
+        vel_dev = self.CiLX[max_idx, 3] - self.simREF[max_idx, 3]
+        self.lat_devs[max_idx] = lat_dev
+        self.vel_devs[max_idx] = vel_dev
 
-        # store current reference trajectory
         self.current_ref_traj = current_ref_traj
 
         # log current combined acceleration
@@ -305,10 +294,10 @@ class Logger:
     """ Get current velocity, current lateral deviation, and current velocity
     deviation as required by the RL observation generator. """
     def get_observation_states(self) -> Tuple[float, float, float]:
-        v = self.CiLX[self.current_step, 3]
-        lat_dev = self.lat_devs[self.current_step]
-        vel_dev = self.vel_devs[self.current_step]
-
+        idx = min(self.current_step, len(self.lat_devs) - 1)
+        v = self.CiLX[idx, 3]
+        lat_dev = self.lat_devs[idx]
+        vel_dev = self.vel_devs[idx]
         return v, lat_dev, vel_dev
     
     def save_logs(

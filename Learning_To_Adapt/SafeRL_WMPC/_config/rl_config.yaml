@@ -12,7 +12,7 @@ n_envs_eval: 1
 evaluation_frequency: 1_000
 
 # TRAINING SETTINGS
-n_training_steps: 1_500_000
+n_training_steps: 1_500_0
 use_adaptive_learning_rate: true
 learning_rate: 0.004                  # NOTE: only active without adaptive learning rate 
 adaptive_lr_final: 0.0001

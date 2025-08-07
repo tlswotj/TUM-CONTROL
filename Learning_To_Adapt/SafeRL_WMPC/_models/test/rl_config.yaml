@@ -20,7 +20,7 @@ n_eval_episodes: 1
 n_mpc_steps: 20
 n_obs_stack: 1
 n_steps: 512
-n_training_steps: 1500000
+n_training_steps: 15000
 net_arch:
 - 128
 - 256

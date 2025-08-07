@@ -154,3 +154,7 @@ class MPC_Sim:
             self.x_buffer[i].append(x_next[i])
             x_next[i] = moving_average_filter(np.array(self.x_buffer[i]), self.window_sizes[i])
         return x_next
+    
+    @property
+    def trajectory_length(self):
+        return len(self.ref_traj_set['pos_x'])
