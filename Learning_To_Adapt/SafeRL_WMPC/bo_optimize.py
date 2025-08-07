@@ -4,6 +4,7 @@ import sys
 import argparse
 import yaml
 
+torch.multiprocessing.set_sharing_strategy('file_system')
 # add parent directory to import path
 current_script_directory = os.path.dirname(os.path.abspath(__file__))
 parent_directory = os.path.dirname(os.path.dirname(current_script_directory))

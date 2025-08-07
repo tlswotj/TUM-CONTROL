@@ -30,7 +30,7 @@ class TrainingData:
 
     def __init__(self, run_path: str, identifier: str):
         # setup path to the tensorboard data
-        self.data_path = os.path.join(run_path, 'tensorboard_1')
+        self.data_path = os.path.join(run_path, 'tensorboard_0')
         # set identifier
         self.identifier = identifier
         # specify the data to store

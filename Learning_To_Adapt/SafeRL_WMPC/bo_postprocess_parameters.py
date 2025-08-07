@@ -44,7 +44,7 @@ class MyObject:
     pass
 
 args = MyObject()
-args.identifier = 'G'
+args.identifier = 'test'
 args.num = 13
 args.save = True
 # load stored trial objects
