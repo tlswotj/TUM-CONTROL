@@ -30,7 +30,7 @@ class MPC_Sim:
         self.Tp      = self.sim_main_params['Tp']     # prediction horizon [s]
         self.Ts_MPC  = self.sim_main_params['Ts_MPC'] # MPC prediction discretization step [s]
         self.Ts      = self.sim_main_params['Ts']     # Simulation sampling period [s]
-        self.N       = int(self.Tp / self.Ts_MPC)          # number of discretizaion steps MPC
+        self.N       = int(self.Tp / self.Ts_MPC)          # number of discretizaion steps MPCinitialization
         self.T       = self.sim_main_params['T']      # simulation time [s]
 
         ## --- Load reference trajectory file ---
