@@ -45,6 +45,24 @@ def postprocess_yaw(yaw):
             yaw += 2*math.pi
         return yaw
 
+def quat_to_yaw(x, y, z, w):
+    """쿼터니언 -> yaw(rad), 범위 (-pi, pi]"""
+    # ZYX 순서에서의 yaw 공식
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    return math.atan2(siny_cosp, cosy_cosp)
+
+
+def wrap_to_2pi(a):
+    a = math.fmod(a, 2.0 * math.pi)
+    return a + 2.0 * math.pi if a < 0.0 else a
+
+
+def angle_diff(a, b):
+    """(a - b)을 (-pi, pi]로 래핑"""
+    d = a - b
+    return (d + math.pi) % (2.0 * math.pi) - math.pi
+
 def PlannerEmulator(ref_traj_set, current_pose, N, Tp, loop_circuit):
     
     # 1. Step: calculate the euclidean distance between the current pose and each point in the reference trajectory

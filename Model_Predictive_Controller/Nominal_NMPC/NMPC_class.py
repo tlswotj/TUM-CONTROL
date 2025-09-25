@@ -190,11 +190,14 @@ class Nonlinear_Model_Predictive_Controller:
 
         # get MPC solution
         # x0 = self.acados_solver.get(0, "x")
-        u0 = self.acados_solver.get(0, "u")
+        # u0 = self.acados_solver.get(0, "u")
         # u0 = acados_solver.solve_for_x0(x_next)
+        self.u = []
         if status == 0: 
             pred_X = np.empty((0, self.nx)) # initialize empty array with shape (0,6)
             for j in range(self.N):
+                u = self.acados_solver.get(j, "u")
+                self.u.append(u)
                 x       = self.acados_solver.get(j,"x")
                 x       = np.array(x) 
                 pred_X  = np.concatenate((pred_X, x.reshape(1, -1)), axis=0)
@@ -238,7 +241,7 @@ class Nonlinear_Model_Predictive_Controller:
 
             self.steps_since_weight_update += 1
 
-        return u0, self.pred_X, self.stats
+        return u, self.pred_X, self.stats
 
     def set_initial_state(self, x0):
         self.x0 = x0

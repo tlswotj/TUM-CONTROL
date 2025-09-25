@@ -63,7 +63,7 @@ class MPC_Sim:
         # delta_yaw = self.current_pose[2] - heading
         v_lon0 = self.current_pose[3]# * np.abs(math.cos(delta_yaw))
         v_lat0 = 0 #self.current_pose[3] #* np.abs(math.sin(delta_yaw))
-        self.X0_MPC = np.array([self.current_pose[0], self.current_pose[1], self.current_pose[2], v_lon0 , v_lat0 , 0.0, 0.0, 0.0]) 
+        self.X0_MPC = np.array([self.current_pose[0], self.current_pose[1], self.current_pose[2], v_lon0 , v_lat0 , 0.0, 0.0, 0.0])
 
         # Vehicle Object or Vehicle Simulator Object
         self.Vehicle = None 
