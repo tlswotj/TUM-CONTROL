@@ -109,6 +109,7 @@ class ZMQBridgeNode(Node):
             self._pub.send_string(json.dumps(data))
         except Exception as e:
             self.get_logger().warn(f"Failed to publish global path over ZMQ: {e}")
+        self.get_logger().info(f"Published global path with {len(pos_x)} points")
 
     def _odom_callback(self, msg: Odometry) -> None:
         """Forward the received odometry message to the MPC controller via ZeroMQ."""
@@ -130,6 +131,7 @@ class ZMQBridgeNode(Node):
             self._pub.send_string(json.dumps(data))
         except Exception as e:
             self.get_logger().warn(f"Failed to publish odom over ZMQ: {e}")
+        self.get_logger().info(f"Published odom at time {t:.3f}, x={data['x']:.2f}, y={data['y']:.2f}")
 
     # ------------------------------------------------------------------
     # ZMQ listener thread
@@ -162,6 +164,7 @@ class ZMQBridgeNode(Node):
                     ack_msg.drive.speed = speed
                     ack_msg.drive.steering_angle = steering_angle
                     self._cmd_pub.publish(ack_msg)
+                    #self.get_logger().info(f"Published control: speed={speed:.2f}, steering_angle={steering_angle:.2f}")
         # Clean up sockets once the loop exits
         self._sub.close()
         self._pub.close()

@@ -178,10 +178,9 @@ class MPCControllerZMQ:
 
         # Construct the nonlinear MPC controller.
         mpc_params_path = f"{config_dir}{mpc_params_file}"
-        X0_MPC = self.current_pose  # initial state
-        self.MPC = Model_Predictive_Controller(
-            config_dir, mpc_params_file, sim_main_params, X0_MPC
-        )
+        self.mpc_params_file = mpc_params_file
+        self.sim_main_params = sim_main_params
+
 
         # ZeroMQ context and sockets.
         self._context = zmq.Context()
@@ -347,8 +346,8 @@ class MPCControllerZMQ:
 
         # Extract control inputs: u[0] = v, u[1] = steering_rate
         try:
-            v_cmd = float(u[0][0])
-            steering_rate = float(u[0][1])
+            v_cmd = float(u[0])
+            steering_rate = float(u[1])
         except Exception:
             return None
 
@@ -378,8 +377,14 @@ class MPCControllerZMQ:
                 if isinstance(msg, dict) and "type" in msg:
                     if msg["type"] == "global_path":
                         self._handle_global_path(msg)
+                        print(f"[MPC] Global path received with {len(self.ref_traj['pos_x'])} points.")
                     elif msg["type"] == "odom":
                         self._handle_odom(msg)
+                        print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
+        X0_MPC = self.current_pose  # initial state
+        self.MPC = Model_Predictive_Controller(
+            self.config_dir, self.mpc_params_file, self.sim_main_params, X0_MPC
+        )
         print("[MPC] Initial data received.  Entering control loop.")
 
         # Start periodic control loop.
@@ -398,8 +403,10 @@ class MPCControllerZMQ:
                     continue
                 if msg["type"] == "global_path":
                     self._handle_global_path(msg)
+                    print(f"[MPC] Global path received with {len(self.ref_traj['pos_x'])} points.")
                 elif msg["type"] == "odom":
                     self._handle_odom(msg)
+                    print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
 
             # Time management for fixed-rate control execution.
             now = time.monotonic()
