@@ -4,18 +4,18 @@ simMode: 0
 
 # --- Reference trajectory and track
 trajectory_path : "Trajectories/"
-track_file    : "track_monteblanco.json" 
-ref_traj_file : "reftraj_monteblanco_edgar.json" 
-idx_ref_start: 0  # start index on the trajectory
+track_file    : "hall.json" 
+ref_traj_file : "track_hall.json" 
+idx_ref_start: 35  # start index on the trajectory
 ref_trajectory_type: 0
     # 0: smooth continuous reference trajectory
     # 1: discrete set of trajectories
 
 # --- Vehicle params: you can simulate a mismatch
-veh_params_file_simulator  : "EDGAR/veh_params_sim.yaml"
-tire_params_file_simulator : "EDGAR/pacejka_params.yaml"
-veh_params_file_MPC  : "EDGAR/veh_params_pred.yaml"
-tire_params_file_MPC : "EDGAR/pacejka_params.yaml"
+veh_params_file_simulator  : "EDGAR/veh_params_sim_f1.yaml"
+tire_params_file_simulator : "EDGAR/pacejka_params_f1.yaml"
+veh_params_file_MPC  : "EDGAR/veh_params_pred_f1.yaml"
+tire_params_file_MPC : "EDGAR/pacejka_params_f1.yaml"
 
 # --- Visualization general params
 live_visualization: 2
@@ -24,8 +24,8 @@ live_visualization: 2
     # 2 -> live: (x,y) evolution + lat dev + velocity + gg diag
 live_plot_freq: 10      # how many frames to skip in live visualization 
 # live plot figure size
-xwidth: 100 # plot x limits relative to the track [m]
-ywidth: 100 # plot y limits relative to the track [m]
+xwidth: 20 # plot x limits relative to the track [m]
+ywidth: 20 # plot y limits relative to the track [m]
 
 # --- GIF generation: caution: this makes simulation slow
 GIF_animation_generation: False # GIF is saved only when live_visualization != 0
