@@ -2,11 +2,14 @@ costfunction_type: 'NONLINEAR_LS' # 'NONLINEAR_LS' or 'EXTERNAL'
 solver_build: True
 solver_generate_C_code: True
 
-enable_WMPC: False           # Weights-varying MPC (COMING-SOON) CAUTION: must be disabled for WMPC training
-WMPC_model: 'Learning_To_Adapt/SafeRL_WMPC/_models/new_BO_F'
+
+
+enable_WMPC: False          # Weights-varying MPC (COMING-SOON) CAUTION: must be disabled for WMPC training
+WMPC_model: 'Learning_To_Adapt/SafeRL_WMPC/_models/test'
 weights_update_period: 20   # number of MPC steps to run between weight updates
 
 ## Static cost function parameters optimized with Multiobjective Bayesian Optimization
+# Baseline default seed for 1:10 F1TENTH
 s_lon           : 1
 s_lat           : 1
 s_yaw           : 1
@@ -14,14 +17,16 @@ s_vel           : 1
 s_jerk          : 1
 s_steering_rate : 1
 
-q_lon           : 2.8
-q_lat           : 2.8
-q_yaw           : 0.4
-q_vel           : 0.2
-r_jerk          : 38.1
-r_steering_rate : 101.4
-L1_pen          : 106.7
-L2_pen          : 9.9
+q_lon           : 75.2
+q_lat           : 75.2
+q_yaw           : 0.2
+q_vel           : 0.0
+r_jerk          : 0.1
+r_steering_rate : 5.4
+L1_pen          : 30.7
+L2_pen          : 60.9
+
+
 
 # --- constraints params
 lookuptable_gg_limits: 'EDGAR/ggv.csv'

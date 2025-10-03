@@ -164,7 +164,7 @@ class ZMQBridgeNode(Node):
                     ack_msg.drive.speed = speed
                     ack_msg.drive.steering_angle = steering_angle
                     self._cmd_pub.publish(ack_msg)
-                    #self.get_logger().info(f"Published control: speed={speed:.2f}, steering_angle={steering_angle:.2f}")
+                    self.get_logger().info(f"Published control: speed={speed:.2f}, steering_angle={steering_angle:.2f}")
         # Clean up sockets once the loop exits
         self._sub.close()
         self._pub.close()

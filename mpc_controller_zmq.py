@@ -38,10 +38,36 @@ import numpy as np
 import zmq
 import yaml
 
-from Model_Predictive_Controller.Nominal_NMPC.NMPC_class import (
-    Nonlinear_Model_Predictive_Controller as Model_Predictive_Controller,
-)
-from Utils.MPC_sim_utils import PlannerEmulator
+"""
+The MPC controller depends on a `Nonlinear_Model_Predictive_Controller` class and
+a `PlannerEmulator` helper.  In the original repository these live in
+`Model_Predictive_Controller.Nominal_NMPC.NMPC_class` and
+`Utils.MPC_sim_utils` respectively, but those packages may not be available
+when running this script standalone.  To make the controller more robust,
+we attempt to import from the original locations and fall back to local
+modules if necessary.  See also the accompanying `utils.py` for
+`PlannerEmulator`.
+"""
+try:
+    # Prefer the original package structure if it exists.
+    from Model_Predictive_Controller.Nominal_NMPC.NMPC_class import (
+        Nonlinear_Model_Predictive_Controller as Model_Predictive_Controller,
+    )
+except ImportError:
+    # Fall back to the local file `NMPC_class.py` when the package is not installed.
+    from NMPC_class import (
+        Nonlinear_Model_Predictive_Controller as Model_Predictive_Controller,
+    )
+
+try:
+    from Utils.MPC_sim_utils import PlannerEmulator
+except ImportError:
+    # Fall back to the local `MPC_sim_utils.py` when the package layout is absent.
+    try:
+        from MPC_sim_utils import PlannerEmulator  # type: ignore
+    except ImportError:
+        # Finally fall back to `utils.py` if neither exists.
+        from utils import PlannerEmulator  # type: ignore
 
 ###############################################################################
 # Helper functions for quaternion/yaw/angle handling.
@@ -125,6 +151,11 @@ class MPCControllerZMQ:
         config_dir: str = "Config/",
         mpc_params_file: str = "EDGAR/MPC_params.yaml",
         sim_main_params_file: str = "EDGAR/sim_main_params.yaml",
+        *,
+        ref_v_unit: str = "mps",
+        ref_v_min: float = 0.1,
+        steering_max: float = 0.5,
+        loop_circuit: bool = True,
     ) -> None:
         """
         Construct a new MPC controller that communicates over ZeroMQ.
@@ -157,6 +188,19 @@ class MPCControllerZMQ:
         # Initial state [x, y, yaw, v_lon, v_lat, yaw_rate, delta_f, a_lon].
         self.current_pose = np.zeros(8, dtype=float)
         self.delta_f = 0.0
+
+        # configuration for reference velocity handling
+        # ref_v_unit specifies the unit of incoming reference velocities: "mps" or "kmh"
+        # ref_v_min is the minimum positive velocity used to avoid division by zero in the planner
+        self.ref_v_unit = ref_v_unit.lower()
+        self.ref_v_min = ref_v_min
+
+        # maximum steering angle (radians) used to saturate the integrated steering angle
+        # if None, no saturation is applied
+        self.steering_max = steering_max
+
+        # whether the reference trajectory is treated as a closed loop
+        self.loop_circuit = loop_circuit
 
         # Previous state for finite difference derivatives.
         self._prev_xy: Optional[Tuple[float, float]] = None
@@ -210,8 +254,23 @@ class MPCControllerZMQ:
         py = msg.get("pos_y", [])
         pv = msg.get("ref_v", [])
 
+        # convert reference velocities to the expected unit (m/s)
+        # clamp velocities to a minimum positive value to avoid zero speeds
+        converted_v = []
+        for v in pv:
+            try:
+                v_float = float(v)
+            except Exception:
+                v_float = 0.0
+            if self.ref_v_unit == "kmh":
+                v_float = v_float / 3.6
+            # clamp to minimum positive value
+            if v_float <= 0.0:
+                v_float = self.ref_v_min
+            converted_v.append(v_float)
+
         # Reset stored reference and fill with incoming data.
-        self.ref_traj = {"pos_x": list(px), "pos_y": list(py), "ref_v": list(pv), "ref_yaw": []}
+        self.ref_traj = {"pos_x": list(px), "pos_y": list(py), "ref_v": converted_v, "ref_yaw": []}
 
         n = len(self.ref_traj["pos_x"])
         # Compute heading angles between consecutive waypoints.
@@ -221,10 +280,18 @@ class MPCControllerZMQ:
             yaw = math.atan2(dy, dx)
             self.ref_traj["ref_yaw"].append(yaw)
         if n > 0:
-            # Last yaw: use the segment from last to first to close the loop.
-            dx = self.ref_traj["pos_x"][0] - self.ref_traj["pos_x"][-1]
-            dy = self.ref_traj["pos_y"][0] - self.ref_traj["pos_y"][-1]
-            yaw_last = math.atan2(dy, dx)
+            # Last yaw: for looped circuits compute segment to first point. Otherwise repeat last segment.
+            if self.loop_circuit and n > 2:
+                dx = self.ref_traj["pos_x"][0] - self.ref_traj["pos_x"][-1]
+                dy = self.ref_traj["pos_y"][0] - self.ref_traj["pos_y"][-1]
+                yaw_last = math.atan2(dy, dx)
+            elif n > 1:
+                # repeat the yaw of the final segment to avoid discontinuities
+                dx = self.ref_traj["pos_x"][-1] - self.ref_traj["pos_x"][-2]
+                dy = self.ref_traj["pos_y"][-1] - self.ref_traj["pos_y"][-2]
+                yaw_last = math.atan2(dy, dx)
+            else:
+                yaw_last = 0.0
             self.ref_traj["ref_yaw"].append(yaw_last)
 
         self._global_path_ready = True
@@ -315,7 +382,7 @@ class MPCControllerZMQ:
         # The PlannerEmulator returns the current index and a trimmed
         # trajectory of length N+1.
         current_ref_idx, current_ref_traj = PlannerEmulator(
-            self.ref_traj, self.current_pose, self.N + 1, self.Tp, loop_circuit=True
+            self.ref_traj, self.current_pose, self.N + 1, self.Tp, loop_circuit=self.loop_circuit
         )
 
         # Set the initial state for the MPC problem.
@@ -328,7 +395,7 @@ class MPCControllerZMQ:
         except Exception as e:
             print(f"[MPC] Exception during solve: {e}")
             return None
-
+        print(f"[MPC] solved")
         # stats[-1] holds the acados return status; 0 indicates success.
         if isinstance(stats, (list, tuple)) and len(stats) > 0:
             status = stats[-1]
@@ -340,19 +407,41 @@ class MPCControllerZMQ:
             # Attempt to reinitialize the solver with the current state.
             try:
                 self.MPC.reintialize_solver(self.current_pose)
+                print(f"[MPC] current_pose x= {self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
             except Exception as e:
                 print(f"[MPC] Failed to reinitialize solver: {e}")
             return None
 
-        # Extract control inputs: u[0] = v, u[1] = steering_rate
+        # The MPC returns two control values: the longitudinal jerk (rate of change
+        # of acceleration) and the front steering rate.  The original code
+        # incorrectly interpreted the jerk as an instantaneous speed command.
+        # To generate a meaningful speed command we integrate the jerk twice:
+        # first to update the longitudinal acceleration and then again to
+        # update the velocity.  This preserves the physical meaning of the
+        # control input.
         try:
-            v_cmd = float(u[0])
+            jerk = float(u[0])
             steering_rate = float(u[1])
         except Exception:
             return None
 
-        # Integrate steering rate to obtain steering angle.
+        # Current longitudinal acceleration and velocity from the state vector.
+        a_lon_current = float(self.current_pose[7]) if len(self.current_pose) > 7 else 0.0
+        v_lon_current = float(self.current_pose[3]) if len(self.current_pose) > 3 else 0.0
+
+        # Update longitudinal acceleration by integrating jerk over one MPC step.
+        a_lon_next = a_lon_current + jerk * self.Ts_MPC
+        # Update velocity by integrating the updated acceleration over one step.
+        v_cmd = v_lon_current + a_lon_next * self.Ts_MPC
+
+        # Integrate steering rate to obtain the front steering angle.
         self.delta_f += steering_rate * self.Ts_MPC
+        # saturate the steering angle if a limit is specified
+        if self.steering_max is not None:
+            if self.delta_f > self.steering_max:
+                self.delta_f = self.steering_max
+            elif self.delta_f < -self.steering_max:
+                self.delta_f = -self.steering_max
 
         return {"speed": v_cmd, "steering_angle": self.delta_f}
 
@@ -361,6 +450,7 @@ class MPCControllerZMQ:
         Main event loop.  Processes incoming messages and executes the control
         loop at the prescribed rate.
         """
+        
         print("[MPC] Waiting for both global path and odometry...")
         poller = zmq.Poller()
         poller.register(self._sub_socket, zmq.POLLIN)
@@ -380,8 +470,9 @@ class MPCControllerZMQ:
                         print(f"[MPC] Global path received with {len(self.ref_traj['pos_x'])} points.")
                     elif msg["type"] == "odom":
                         self._handle_odom(msg)
-                        print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
+                        #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         X0_MPC = self.current_pose  # initial state
+        print(f"[MPC] Initial pose: x={X0_MPC[0]:.2f}, y={X0_MPC[1]:.2f}, yaw={X0_MPC[2]:.2f}, v_lon={X0_MPC[3]:.2f}")
         self.MPC = Model_Predictive_Controller(
             self.config_dir, self.mpc_params_file, self.sim_main_params, X0_MPC
         )
@@ -389,6 +480,7 @@ class MPCControllerZMQ:
 
         # Start periodic control loop.
         while True:
+            now = time.monotonic()
             # Process all available incoming messages.
             while True:
                 try:
@@ -409,7 +501,7 @@ class MPCControllerZMQ:
                     print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
 
             # Time management for fixed-rate control execution.
-            now = time.monotonic()
+
             if now >= self._next_control_time:
                 # Update target time for the next cycle.
                 self._next_control_time = now + self._control_period
