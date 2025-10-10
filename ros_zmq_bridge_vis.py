@@ -27,6 +27,11 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 from nav_msgs.msg import Path, Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
 
+# Visualisation of predicted trajectories requires Marker and MarkerArray from
+# visualization_msgs and the Point type from geometry_msgs.
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Point
+
 import zmq
 
 
@@ -70,6 +75,18 @@ class ZMQBridgeNode(Node):
             durability=QoSDurabilityPolicy.VOLATILE,
         )
         self._cmd_pub = self.create_publisher(AckermannDriveStamped, "/cmd_drive", cmd_qos)
+
+        # Publisher for the predicted MPC trajectory.  The MPC controller
+        # includes the predicted x/y positions in its control message.  These
+        # coordinates are visualised as a line strip using a MarkerArray on
+        # the '/mpc_predicted_path' topic.
+        marker_qos = QoSProfile(
+            depth=10,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.VOLATILE,
+        )
+        self._marker_pub = self.create_publisher(MarkerArray, "/mpc_predicted_path", marker_qos)
+        self._ref_traj_pub = self.create_publisher(MarkerArray, "/mpc_ref_path", marker_qos)
 
         # Subscribe to global_path (transient/local)
         global_path_qos = QoSProfile(
@@ -165,6 +182,92 @@ class ZMQBridgeNode(Node):
                     ack_msg.drive.steering_angle = steering_angle
                     self._cmd_pub.publish(ack_msg)
                     self.get_logger().info(f"Published control: speed={speed:.2f}, steering_angle={steering_angle:.2f}")
+
+                    # If the control message includes predicted x/y coordinates
+                    # (sent by the MPC controller) then convert them into a
+                    # MarkerArray for visualisation.  The expected fields are
+                    # 'pred_x' and 'pred_y', both lists of equal length.  When
+                    # present, a single Marker of type LINE_STRIP is created.
+                    pred_x = cmd.get("pred_x")
+                    pred_y = cmd.get("pred_y")
+                    ref_x = cmd.get("ref_x")
+                    ref_y = cmd.get("ref_y")
+                    if isinstance(pred_x, list) and isinstance(pred_y, list) and len(pred_x) == len(pred_y) and len(pred_x) > 0:
+                        marker_array = MarkerArray()
+                        marker = Marker()
+                        marker.header.stamp = self.get_clock().now().to_msg()
+                        # Use map frame for the trajectory visualisation; this
+                        # should match the frame_id of the global path used by
+                        # the planner.  Adjust if necessary for your setup.
+                        marker.header.frame_id = "map"
+                        marker.ns = "mpc_predicted_path"
+                        marker.id = 0
+                        marker.type = Marker.LINE_STRIP
+                        marker.action = Marker.ADD
+                        # Populate the points for the line strip
+                        marker.points = []
+                        for x_val, y_val in zip(pred_x, pred_y):
+                            p = Point()
+                            try:
+                                p.x = float(x_val)
+                                p.y = float(y_val)
+                            except Exception:
+                                continue
+                            p.z = 0.0
+                            marker.points.append(p)
+                        # Set a reasonable scale for the line thickness
+                        marker.scale.x = 0.05
+                        marker.scale.y = 0.0
+                        marker.scale.z = 0.0
+                        # Set colour: blue with full opacity
+                        marker.color.r = 0.0
+                        marker.color.g = 0.0
+                        marker.color.b = 1.0
+                        marker.color.a = 1.0
+                        # No orientation needed for a line strip
+                        marker.pose.orientation.w = 1.0
+                        # Add the marker to the array and publish
+                        marker_array.markers.append(marker)
+                        self._marker_pub.publish(marker_array)
+                        self.get_logger().info(f"Published predicted path with {len(marker.points)} points")
+                    if isinstance(ref_x, list) and isinstance(ref_y, list) and len(ref_x) == len(ref_y) and len(ref_x) > 0:
+                        marker_array = MarkerArray()
+                        marker = Marker()
+                        marker.header.stamp = self.get_clock().now().to_msg()
+                        # Use map frame for the trajectory visualisation; this
+                        # should match the frame_id of the global path used by
+                        # the planner.  Adjust if necessary for your setup.
+                        marker.header.frame_id = "map"
+                        marker.ns = "mpc_ref_path"
+                        marker.id = 0
+                        marker.type = Marker.LINE_STRIP
+                        marker.action = Marker.ADD
+                        # Populate the points for the line strip
+                        marker.points = []
+                        for x_val, y_val in zip(ref_x, ref_y):
+                            p = Point()
+                            try:
+                                p.x = float(x_val)
+                                p.y = float(y_val)
+                            except Exception:
+                                continue
+                            p.z = 0.0
+                            marker.points.append(p)
+                        # Set a reasonable scale for the line thickness
+                        marker.scale.x = 0.05
+                        marker.scale.y = 0.0
+                        marker.scale.z = 0.0
+                        # Set colour: red with full opacity
+                        marker.color.r = 1.0
+                        marker.color.g = 0.0
+                        marker.color.b = 0.0
+                        marker.color.a = 1.0
+                        # No orientation needed for a line strip
+                        marker.pose.orientation.w = 1.0
+                        # Add the marker to the array and publish
+                        marker_array.markers.append(marker)
+                        self._ref_traj_pub.publish(marker_array)
+                        self.get_logger().info(f"Published reference path with {len(marker.points)} points")
         # Clean up sockets once the loop exits
         self._sub.close()
         self._pub.close()

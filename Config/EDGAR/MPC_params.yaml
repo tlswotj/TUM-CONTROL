@@ -1,6 +1,6 @@
 costfunction_type: 'NONLINEAR_LS' # 'NONLINEAR_LS' or 'EXTERNAL'
-solver_build: True
-solver_generate_C_code: True
+solver_build: False
+solver_generate_C_code: False
 
 
 
@@ -23,9 +23,8 @@ q_yaw           : 0.2
 q_vel           : 0.0
 r_jerk          : 0.1
 r_steering_rate : 5.4
-L1_pen          : 30.7
-L2_pen          : 60.9
-
+L1_pen          : 3230.7
+L2_pen          : 6850.9
 
 
 # --- constraints params

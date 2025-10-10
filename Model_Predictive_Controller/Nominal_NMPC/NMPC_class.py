@@ -167,9 +167,9 @@ class Nonlinear_Model_Predictive_Controller:
 
         # update MPC reference
         for j in range(self.N):
-            if self.costfunction_type == 'NONLINEAR_LS':
-                yref = np.array([current_ref_traj['pos_x'][j],current_ref_traj['pos_y'][j],current_ref_traj['ref_yaw'][j],current_ref_traj['ref_v'][j], 0,0])
-                self.acados_solver.set(j, "yref", yref)
+            #if self.costfunction_type == 'NONLINEAR_LS':
+            yref = np.array([current_ref_traj['pos_x'][j],current_ref_traj['pos_y'][j],current_ref_traj['ref_yaw'][j],current_ref_traj['ref_v'][j], 0,0])
+            self.acados_solver.set(j, "yref", yref)
             if self.costfunction_type == 'EXTERNAL':
                 yref = np.array([current_ref_traj['pos_x'][j],current_ref_traj['pos_y'][j],current_ref_traj['ref_yaw'][j],current_ref_traj['ref_v'][j]])
                 self.acados_solver.set(j, "p", yref)
@@ -190,8 +190,6 @@ class Nonlinear_Model_Predictive_Controller:
 
         # get MPC solution
         # x0 = self.acados_solver.get(0, "x")
-        # u0 = self.acados_solver.get(0, "u")
-        # u0 = acados_solver.solve_for_x0(x_next)
         u0 = self.acados_solver.get(0, "u")
         # u0 = acados_solver.solve_for_x0(x_next)
         if status == 0: 
@@ -262,7 +260,7 @@ class Nonlinear_Model_Predictive_Controller:
             from Model_Predictive_Controller.Nominal_NMPC.NMPC_STM_acados_settings import acados_settings
         else:
             from Model_Predictive_Controller.Nominal_NMPC.NMPC_STM_acados_settings_dev_lonlat import acados_settings
-        self.constraint, self.model, self.acados_solver, self.costfunction_type = acados_settings(self.Tp, self.N, X0_MPC, 
+        self.constraint, self.model, self.acados_solver, self.ocp = acados_settings(self.Tp, self.N, X0_MPC, 
             self.Q, self.R, self.Qe, self.L1_pen, self.L2_pen, self.ax_lim, self.ay_lim, self.combined_acc_limits,
             self.veh_params_full_path, self.tire_params_full_path, solver_generate_C_code = solver_generate_C_code, solver_build = solver_build)
         self.set_initial_state(X0_MPC)
