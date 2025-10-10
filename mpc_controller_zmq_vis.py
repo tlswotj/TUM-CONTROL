@@ -474,11 +474,12 @@ class MPCControllerZMQ:
             return None
         next_x = pred_X[1, :]
         self.next_x = next_x
-        #self.MPC.set_initial_state(self.current_pose)
+        
+        self.MPC.set_initial_state(self.current_pose)
         #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
         print(f"[MPC] literation count: {stats[3]}")
-        self.MPC.set_initial_state(next_x)
+        #self.MPC.set_initial_state(next_x)
 
         # The MPC returns two control values: the longitudinal jerk (rate of change
         # of acceleration) and the front steering rate.  The original code
@@ -492,7 +493,7 @@ class MPCControllerZMQ:
             steering_rate = float(u[1])
         except Exception:
             return None
-
+        '''
         # Current longitudinal acceleration and velocity from the state vector.
         a_lon_current = float(self.current_pose[7]) if len(self.current_pose) > 7 else 0.0
         v_lon_current = float(self.current_pose[3]) if len(self.current_pose) > 3 else 0.0
@@ -505,16 +506,19 @@ class MPCControllerZMQ:
         # Integrate steering rate to obtain the front steering angle.
         self.delta_f += steering_rate * self.Ts_MPC
         # saturate the steering angle if a limit is specified
+        
         if self.steering_max is not None:
             if self.delta_f > self.steering_max:
                 self.delta_f = self.steering_max
             elif self.delta_f < -self.steering_max:
                 self.delta_f = -self.steering_max
-
+        '''
         # Extract the predicted x/y trajectory for downstream visualisation.  pred_X
         # is a 2‑D array of shape (N+1, state_dim); the first two columns
         # represent x and y positions.  Convert to plain Python lists so they
         # can be JSON‑encoded for the ZeroMQ bridge.
+        self.delta_f = next_x[6]
+        v_cmd = next_x[3]+0.9
         try:
             pred_x_list = pred_X[:, 0].astype(float).tolist()
             pred_y_list = pred_X[:, 1].astype(float).tolist()

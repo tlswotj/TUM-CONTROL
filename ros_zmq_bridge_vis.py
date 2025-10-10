@@ -74,7 +74,7 @@ class ZMQBridgeNode(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.VOLATILE,
         )
-        self._cmd_pub = self.create_publisher(AckermannDriveStamped, "/cmd_drive", cmd_qos)
+        self._cmd_pub = self.create_publisher(AckermannDriveStamped, "/drive", cmd_qos)
 
         # Publisher for the predicted MPC trajectory.  The MPC controller
         # includes the predicted x/y positions in its control message.  These
