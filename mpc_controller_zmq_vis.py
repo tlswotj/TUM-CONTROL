@@ -463,7 +463,7 @@ class MPCControllerZMQ:
         else:
             status = 0
 
-        if status != 0:
+        if status != 0 or stats[3] <= 1.1:
             print(f"[MPC] acados returned status {status}")
             # Attempt to reinitialize the solver with the current state.
             try:
@@ -475,8 +475,9 @@ class MPCControllerZMQ:
         next_x = pred_X[1, :]
         self.next_x = next_x
         #self.MPC.set_initial_state(self.current_pose)
-        print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
-        print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
+        #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
+        #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
+        print(f"[MPC] literation count: {stats[3]}")
         self.MPC.set_initial_state(next_x)
 
         # The MPC returns two control values: the longitudinal jerk (rate of change
@@ -589,7 +590,7 @@ class MPCControllerZMQ:
                     print(f"[MPC] Global path received with {len(self.ref_traj['pos_x'])} points.")
                 elif msg["type"] == "odom":
                     self._handle_odom(msg)
-                    print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
+                    #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
 
             # Time management for fixed-rate control execution.
 
