@@ -167,9 +167,9 @@ class Nonlinear_Model_Predictive_Controller:
 
         # update MPC reference
         for j in range(self.N):
-            #if self.costfunction_type == 'NONLINEAR_LS':
-            yref = np.array([current_ref_traj['pos_x'][j],current_ref_traj['pos_y'][j],current_ref_traj['ref_yaw'][j],current_ref_traj['ref_v'][j], 0,0])
-            self.acados_solver.set(j, "yref", yref)
+            if self.costfunction_type == 'NONLINEAR_LS':
+                yref = np.array([current_ref_traj['pos_x'][j],current_ref_traj['pos_y'][j],current_ref_traj['ref_yaw'][j],current_ref_traj['ref_v'][j], 0,0])
+                self.acados_solver.set(j, "yref", yref)
             if self.costfunction_type == 'EXTERNAL':
                 yref = np.array([current_ref_traj['pos_x'][j],current_ref_traj['pos_y'][j],current_ref_traj['ref_yaw'][j],current_ref_traj['ref_v'][j]])
                 self.acados_solver.set(j, "p", yref)
