@@ -271,13 +271,8 @@ class MPCControllerZMQ:
             "pos_x": list(px),
             "pos_y": list(py),
             "ref_v": converted_v,
-            "ref_yaw": [],
-            #"orientation_x": [],
-            #"orientation_y": [],
-            #"orientation_z": [],
-            #"orientation_w": [],
-            #"ref_acc": []
-        }
+            "ref_yaw": []
+                          }
 
         # compute yaw for each segment
         for i in range(n - 1):
@@ -302,60 +297,7 @@ class MPCControllerZMQ:
                 yaw_last = 0.0
             self.ref_traj["ref_yaw"].append(yaw_last)
 
-        '''
-        # unwrap yaw to reduce jumps, then wrap back to [-pi, pi]
-        for i in range(1, len(self.ref_traj["ref_yaw"])):
-            delta = self.ref_traj["ref_yaw"][i] - self.ref_traj["ref_yaw"][i - 1]
-            if delta > math.pi:
-                self.ref_traj["ref_yaw"][i] -= 2.0 * math.pi
-            elif delta < -math.pi:
-                self.ref_traj["ref_yaw"][i] += 2.0 * math.pi
-        # wrap all yaw values into [-pi, pi] range
-        for i in range(len(self.ref_traj["ref_yaw"])):
-            y = self.ref_traj["ref_yaw"][i]
-            y = (y + math.pi) % (2.0 * math.pi) - math.pi
-            self.ref_traj["ref_yaw"][i] = y
-        '''
-        
-        # compute orientation from yaw (x and y are always 0)
-        '''for yaw in self.ref_traj["ref_yaw"]:
-            self.ref_traj["orientation_x"].append(0.0)
-            self.ref_traj["orientation_y"].append(0.0)
-            self.ref_traj["orientation_z"].append(math.sin(yaw * 0.5))
-            self.ref_traj["orientation_w"].append(math.cos(yaw * 0.5))
 
-        # compute ref_acc for each segment
-        for i in range(n - 1):
-            dx = px[i + 1] - px[i]
-            dy = py[i + 1] - py[i]
-            dist = math.hypot(dx, dy)
-            v1 = converted_v[i]
-            v2 = converted_v[i + 1]
-            avg_v = (v1 + v2) * 0.5 if (v1 + v2) > 0 else self.ref_v_min
-            time = dist / avg_v if avg_v > 1e-6 else dist / self.ref_v_min
-            acc = (v2 - v1) / max(time, 1e-6)
-            self.ref_traj["ref_acc"].append(acc)
-
-        # last acceleration: handle loop or repeat final segment
-        if n > 0:
-            if self.loop_circuit and n > 2:
-                dx = px[0] - px[-1]
-                dy = py[0] - py[-1]
-                v1 = converted_v[-1]
-                v2 = converted_v[0]
-            elif n > 1:
-                dx = px[-1] - px[-2]
-                dy = py[-1] - py[-2]
-                v1 = converted_v[-2]
-                v2 = converted_v[-1]
-            else:
-                dx = dy = v1 = v2 = 0.0
-            dist = math.hypot(dx, dy)
-            avg_v = (v1 + v2) * 0.5 if (v1 + v2) > 0 else self.ref_v_min
-            time = dist / avg_v if avg_v > 1e-6 else dist / self.ref_v_min
-            acc_last = (v2 - v1) / max(time, 1e-6)
-            self.ref_traj["ref_acc"].append(acc_last)
-        '''
         # flag ready
         self._global_path_ready = True
 
@@ -484,7 +426,7 @@ class MPCControllerZMQ:
         #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
         print(f"[MPC] literation count: {stats[3]}")
-        self.MPC.set_initial_state(next_x)
+        #self.MPC.set_initial_state(next_x)
 
         # The MPC returns two control values: the longitudinal jerk (rate of change
         # of acceleration) and the front steering rate.  The original code
@@ -498,7 +440,7 @@ class MPCControllerZMQ:
             steering_rate = float(u[1])
         except Exception:
             return None
-
+        '''
         # Current longitudinal acceleration and velocity from the state vector.
         a_lon_current = float(self.current_pose[7]) if len(self.current_pose) > 7 else 0.0
         v_lon_current = float(self.current_pose[3]) if len(self.current_pose) > 3 else 0.0
@@ -511,16 +453,19 @@ class MPCControllerZMQ:
         # Integrate steering rate to obtain the front steering angle.
         self.delta_f += steering_rate * self.Ts_MPC
         # saturate the steering angle if a limit is specified
+        
         if self.steering_max is not None:
             if self.delta_f > self.steering_max:
                 self.delta_f = self.steering_max
             elif self.delta_f < -self.steering_max:
                 self.delta_f = -self.steering_max
-
+        '''
         # Extract the predicted x/y trajectory for downstream visualisation.  pred_X
         # is a 2‑D array of shape (N+1, state_dim); the first two columns
         # represent x and y positions.  Convert to plain Python lists so they
         # can be JSON‑encoded for the ZeroMQ bridge.
+        self.delta_f = next_x[6]
+        v_cmd = next_x[3]+0.9
         try:
             pred_x_list = pred_X[:, 0].astype(float).tolist()
             pred_y_list = pred_X[:, 1].astype(float).tolist()
