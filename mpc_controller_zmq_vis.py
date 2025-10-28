@@ -270,12 +270,7 @@ class MPCControllerZMQ:
             "pos_x": list(px),
             "pos_y": list(py),
             "ref_v": converted_v,
-            "ref_yaw": [],
-            "orientation_x": [],
-            "orientation_y": [],
-            "orientation_z": [],
-            "orientation_w": [],
-            "ref_acc": []
+            "ref_yaw": []
         }
 
         # compute yaw for each segment
@@ -300,58 +295,6 @@ class MPCControllerZMQ:
             else:
                 yaw_last = 0.0
             self.ref_traj["ref_yaw"].append(yaw_last)
-
-        # unwrap yaw to reduce jumps, then wrap back to [-pi, pi]
-        for i in range(1, len(self.ref_traj["ref_yaw"])):
-            delta = self.ref_traj["ref_yaw"][i] - self.ref_traj["ref_yaw"][i - 1]
-            if delta > math.pi:
-                self.ref_traj["ref_yaw"][i] -= 2.0 * math.pi
-            elif delta < -math.pi:
-                self.ref_traj["ref_yaw"][i] += 2.0 * math.pi
-        # wrap all yaw values into [-pi, pi] range
-        for i in range(len(self.ref_traj["ref_yaw"])):
-            y = self.ref_traj["ref_yaw"][i]
-            y = (y + math.pi) % (2.0 * math.pi) - math.pi
-            self.ref_traj["ref_yaw"][i] = y
-
-        # compute orientation from yaw (x and y are always 0)
-        for yaw in self.ref_traj["ref_yaw"]:
-            self.ref_traj["orientation_x"].append(0.0)
-            self.ref_traj["orientation_y"].append(0.0)
-            self.ref_traj["orientation_z"].append(math.sin(yaw * 0.5))
-            self.ref_traj["orientation_w"].append(math.cos(yaw * 0.5))
-
-        # compute ref_acc for each segment
-        for i in range(n - 1):
-            dx = px[i + 1] - px[i]
-            dy = py[i + 1] - py[i]
-            dist = math.hypot(dx, dy)
-            v1 = converted_v[i]
-            v2 = converted_v[i + 1]
-            avg_v = (v1 + v2) * 0.5 if (v1 + v2) > 0 else self.ref_v_min
-            time = dist / avg_v if avg_v > 1e-6 else dist / self.ref_v_min
-            acc = (v2 - v1) / max(time, 1e-6)
-            self.ref_traj["ref_acc"].append(acc)
-
-        # last acceleration: handle loop or repeat final segment
-        if n > 0:
-            if self.loop_circuit and n > 2:
-                dx = px[0] - px[-1]
-                dy = py[0] - py[-1]
-                v1 = converted_v[-1]
-                v2 = converted_v[0]
-            elif n > 1:
-                dx = px[-1] - px[-2]
-                dy = py[-1] - py[-2]
-                v1 = converted_v[-2]
-                v2 = converted_v[-1]
-            else:
-                dx = dy = v1 = v2 = 0.0
-            dist = math.hypot(dx, dy)
-            avg_v = (v1 + v2) * 0.5 if (v1 + v2) > 0 else self.ref_v_min
-            time = dist / avg_v if avg_v > 1e-6 else dist / self.ref_v_min
-            acc_last = (v2 - v1) / max(time, 1e-6)
-            self.ref_traj["ref_acc"].append(acc_last)
 
         # flag ready
         self._global_path_ready = True
