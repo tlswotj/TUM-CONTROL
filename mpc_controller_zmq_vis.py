@@ -211,6 +211,7 @@ class MPCControllerZMQ:
         # Flags indicating whether initial data has been received.
         self._global_path_ready = False
         self._odom_ready = False
+        self.next_x: Optional[np.ndarray] = None
 
         # Storage for the reference trajectory.
         self.ref_traj: Dict[str, list] = {
@@ -271,11 +272,11 @@ class MPCControllerZMQ:
             "pos_y": list(py),
             "ref_v": converted_v,
             "ref_yaw": [],
-            "orientation_x": [],
-            "orientation_y": [],
-            "orientation_z": [],
-            "orientation_w": [],
-            "ref_acc": []
+            #"orientation_x": [],
+            #"orientation_y": [],
+            #"orientation_z": [],
+            #"orientation_w": [],
+            #"ref_acc": []
         }
 
         # compute yaw for each segment
@@ -301,6 +302,7 @@ class MPCControllerZMQ:
                 yaw_last = 0.0
             self.ref_traj["ref_yaw"].append(yaw_last)
 
+        '''
         # unwrap yaw to reduce jumps, then wrap back to [-pi, pi]
         for i in range(1, len(self.ref_traj["ref_yaw"])):
             delta = self.ref_traj["ref_yaw"][i] - self.ref_traj["ref_yaw"][i - 1]
@@ -313,9 +315,10 @@ class MPCControllerZMQ:
             y = self.ref_traj["ref_yaw"][i]
             y = (y + math.pi) % (2.0 * math.pi) - math.pi
             self.ref_traj["ref_yaw"][i] = y
-
+        '''
+        
         # compute orientation from yaw (x and y are always 0)
-        for yaw in self.ref_traj["ref_yaw"]:
+        '''for yaw in self.ref_traj["ref_yaw"]:
             self.ref_traj["orientation_x"].append(0.0)
             self.ref_traj["orientation_y"].append(0.0)
             self.ref_traj["orientation_z"].append(math.sin(yaw * 0.5))
@@ -352,7 +355,7 @@ class MPCControllerZMQ:
             time = dist / avg_v if avg_v > 1e-6 else dist / self.ref_v_min
             acc_last = (v2 - v1) / max(time, 1e-6)
             self.ref_traj["ref_acc"].append(acc_last)
-
+        '''
         # flag ready
         self._global_path_ready = True
 
@@ -442,9 +445,11 @@ class MPCControllerZMQ:
         # Generate a reference trajectory segment for the prediction horizon.
         # The PlannerEmulator returns the current index and a trimmed
         # trajectory of length N+1.
+        if(self.next_x is None):
+            self.next_x = self.current_pose
 
         current_ref_idx, current_ref_traj = PlannerEmulator(
-            self.ref_traj, self.current_pose, self.N + 1, self.Tp, loop_circuit=self.loop_circuit
+            self.ref_traj, self.next_x, self.N + 1, self.Tp, loop_circuit=self.loop_circuit
         )
 
         # Set the initial state for the MPC problem.
@@ -456,7 +461,7 @@ class MPCControllerZMQ:
         except Exception as e:
             print(f"[MPC] Exception during solve: {e}")
             return None
-        print(f"[MPC] solved")
+        #print(f"[MPC] solved")
         # stats[-1] holds the acados return status; 0 indicates success.
         if isinstance(stats, (list, tuple)) and len(stats) > 0:
             status = stats[-1]
@@ -474,6 +479,7 @@ class MPCControllerZMQ:
             return None
         next_x = pred_X[1, :]
         self.next_x = next_x
+        print(f"[MPC] current_yaw ={next_x[2]:.2f}, target_yaw={current_ref_traj['ref_yaw'][0]:.2f}, yaw_error={angle_diff(next_x[2], current_ref_traj['ref_yaw'][0]):.2f}")
         #self.MPC.set_initial_state(self.current_pose)
         #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")

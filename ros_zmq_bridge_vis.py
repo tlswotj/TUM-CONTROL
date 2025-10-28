@@ -229,7 +229,7 @@ class ZMQBridgeNode(Node):
                         # Add the marker to the array and publish
                         marker_array.markers.append(marker)
                         self._marker_pub.publish(marker_array)
-                        self.get_logger().info(f"Published predicted path with {len(marker.points)} points")
+                        #self.get_logger().info(f"Published predicted path with {len(marker.points)} points")
                     if isinstance(ref_x, list) and isinstance(ref_y, list) and len(ref_x) == len(ref_y) and len(ref_x) > 0:
                         marker_array = MarkerArray()
                         marker = Marker()
@@ -267,7 +267,7 @@ class ZMQBridgeNode(Node):
                         # Add the marker to the array and publish
                         marker_array.markers.append(marker)
                         self._ref_traj_pub.publish(marker_array)
-                        self.get_logger().info(f"Published reference path with {len(marker.points)} points")
+                        #self.get_logger().info(f"Published reference path with {len(marker.points)} points")
         # Clean up sockets once the loop exits
         self._sub.close()
         self._pub.close()
