@@ -3,7 +3,7 @@ l: 0.324
 lf: 0.162
 lr: 0.162
 m: 3.9
-Iz: 0.128
+Iz: 0.07
 h: 0.045
 ro: 1.225
 S: 0.05
@@ -19,7 +19,7 @@ lat_acc_min: -5.886
 lat_acc_max: 5.886
 acc_min: -4.5
 acc_max: 3.0
-delta_f_min: -0.44
-delta_f_max: 0.44
+delta_f_min: -0.25
+delta_f_max: 0.25
 delta_f_dot_min: -4.4
 delta_f_dot_max: 4.4

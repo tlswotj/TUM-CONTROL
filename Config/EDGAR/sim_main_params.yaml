@@ -36,10 +36,10 @@ save_logs: True
 file_logs_name : 'SNMPC_trial'
 
 # --- Time params
-Ts    : 0.02    # simulator discretization time [s]
+Ts    : 0.08    # simulator discretization time [s]
 T     : 100.00  # maximum simulation time [s]
-Tp    : 3.04    # prediction horizon [s]
-Ts_MPC: 0.02    # MPC prediction discretization step [s]
+Tp    : 2.04    # prediction horizon [s]
+Ts_MPC: 0.08    # MPC prediction discretization step [s]
 
 # --- General disturbance params
 disturbance_playback    : False          

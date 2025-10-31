@@ -205,7 +205,9 @@ class MPCControllerZMQ:
         # Previous state for finite difference derivatives.
         self._prev_xy: Optional[Tuple[float, float]] = None
         self._prev_t: Optional[float] = None
-        self._prev_yaw: Optional[float] = None
+        self._prev_yaw: Optional[float] = None  # continuous yaw
+        self._prev_yaw_wrapped: Optional[float] = None  # raw yaw in (-pi, pi]
+        self._yaw_continuous: Optional[float] = None
         self._prev_v_lon: float = 0.0
 
         # Flags indicating whether initial data has been received.
@@ -265,7 +267,7 @@ class MPCControllerZMQ:
         for i in range(n - 1):
             dx = px[i + 1] - px[i]
             dy = py[i + 1] - py[i]
-            self.ref_traj["ref_yaw"].append(wrap_to_2pi(math.atan2(dx, dy)))  # store in [0, 2pi)
+            self.ref_traj["ref_yaw"].append(math.atan2(dy, dx))
 
         # compute last yaw: if loop and last==first, reuse previous yaw to avoid wrap‑around
         if n > 0:
@@ -308,10 +310,15 @@ class MPCControllerZMQ:
         qw = float(msg["qw"])
         t = float(msg["timestamp"])
 
-        # Yaw extraction and wrapping.
+        # Yaw extraction and continuous accumulation.
         yaw_raw = quat_to_yaw(qx, qy, qz, qw)  # (-pi, pi]
-        yaw = wrap_to_2pi(yaw_raw)  # [0, 2pi)
-        #yaw = yaw_raw  # keep in (-pi, pi] for angle_diff calculations
+        if self._prev_yaw_wrapped is None or self._yaw_continuous is None:
+            yaw = yaw_raw
+        else:
+            delta_yaw = angle_diff(yaw_raw, self._prev_yaw_wrapped)
+            yaw = self._yaw_continuous + delta_yaw
+        self._prev_yaw_wrapped = yaw_raw
+        self._yaw_continuous = yaw
 
         # Finite difference to compute world-frame velocities.
         if self._prev_xy is None or self._prev_t is None:
@@ -336,8 +343,7 @@ class MPCControllerZMQ:
 
         # Yaw rate.
         if self._prev_yaw is not None and dt > 1e-6:
-            dyaw = angle_diff(yaw, self._prev_yaw)
-            yaw_rate = dyaw / dt
+            yaw_rate = (yaw - self._prev_yaw) / dt
         else:
             yaw_rate = 0.0
 
@@ -410,12 +416,12 @@ class MPCControllerZMQ:
             return None
         next_x = pred_X[1, :]
         self.next_x = next_x
-        print(f"[MPC] current_yaw ={next_x[2]:.2f}, target_yaw={current_ref_traj['ref_yaw'][0]:.2f}, yaw_error={angle_diff(next_x[2], current_ref_traj['ref_yaw'][0]):.2f}")
-        #self.MPC.set_initial_state(self.current_pose)
-        #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
+        #print(f"[MPC] current_yaw ={next_x[2]:.2f}, target_yaw={current_ref_traj['ref_yaw'][0]:.2f}, yaw_error={angle_diff(next_x[2], current_ref_traj['ref_yaw'][0]):.2f}")
+        self.MPC.set_initial_state(self.current_pose)
+        print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
         print(f"[MPC] literation count: {stats[3]}")
-        self.MPC.set_initial_state(next_x)
+        #self.MPC.set_initial_state(next_x)
 
         # The MPC returns two control values: the longitudinal jerk (rate of change
         # of acceleration) and the front steering rate.  The original code

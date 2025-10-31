@@ -229,7 +229,7 @@ def acados_settings(Tf, N, x0, Q, R, Qe, L1_pen, L2_pen, ax_max_interpolant, ay_
     # set QP solver and integration0.9
     ocp.solver_options.tf = Tf
     ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
-    ocp.solver_options.qp_solver_iter_max = 50 #  Default: 50
+    ocp.solver_options.qp_solver_iter_max = 150 #  Default: 50
     # ocp.solver_options.qp_solver_warm_start = 1
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     # ocp.solver_options.nlp_solver_max_iter = 150

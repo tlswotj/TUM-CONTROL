@@ -260,9 +260,18 @@ class Nonlinear_Model_Predictive_Controller:
             from Model_Predictive_Controller.Nominal_NMPC.NMPC_STM_acados_settings import acados_settings
         else:
             from Model_Predictive_Controller.Nominal_NMPC.NMPC_STM_acados_settings_dev_lonlat import acados_settings
-        self.constraint, self.model, self.acados_solver, self.ocp = acados_settings(self.Tp, self.N, X0_MPC, 
-            self.Q, self.R, self.Qe, self.L1_pen, self.L2_pen, self.ax_lim, self.ay_lim, self.combined_acc_limits,
-            self.veh_params_full_path, self.tire_params_full_path, solver_generate_C_code = solver_generate_C_code, solver_build = solver_build)
+        (
+            self.constraint,
+            self.model,
+            self.acados_solver,
+            self.ocp
+        ) = acados_settings(
+            self.Tp, self.N, X0_MPC, self.Q, self.R, self.Qe, self.L1_pen,
+            self.L2_pen, self.ax_lim, self.ay_lim, self.combined_acc_limits,
+            self.veh_params_full_path, self.tire_params_full_path,
+            solver_generate_C_code=solver_generate_C_code,
+            solver_build=solver_build
+        )
         self.set_initial_state(X0_MPC)
         return
     
