@@ -108,7 +108,7 @@ def wrap_to_2pi(angle: float) -> float:
         Equivalent angle in the range [0, 2*pi).
     """
     twopi = 2.0 * math.pi
-    return angle % twopi
+    return (angle+twopi) % twopi
 
 
 def angle_diff(angle: float, reference: float) -> float:
@@ -252,25 +252,12 @@ class MPCControllerZMQ:
         py = msg.get("pos_y", [])
         pv = msg.get("ref_v", [])
 
-        # convert velocities to m/s and clamp to minimum positive value
-        converted_v = []
-        for v in pv:
-            try:
-                v_float = float(v)
-            except Exception:
-                v_float = 0.0
-            if self.ref_v_unit == "kmh":
-                v_float = v_float / 3.6
-            if v_float <= 0.0:
-                v_float = self.ref_v_min
-            converted_v.append(v_float)
-
         n = len(px)
         # initialise ref_traj with empty lists
         self.ref_traj = {
             "pos_x": list(px),
             "pos_y": list(py),
-            "ref_v": converted_v,
+            "ref_v": pv,
             "ref_yaw": []
                           }
 
@@ -278,7 +265,7 @@ class MPCControllerZMQ:
         for i in range(n - 1):
             dx = px[i + 1] - px[i]
             dy = py[i + 1] - py[i]
-            self.ref_traj["ref_yaw"].append(math.atan2(dy, dx))
+            self.ref_traj["ref_yaw"].append(wrap_to_2pi(math.atan2(dx, dy)))  # store in [0, 2pi)
 
         # compute last yaw: if loop and last==first, reuse previous yaw to avoid wrap‑around
         if n > 0:
@@ -324,6 +311,7 @@ class MPCControllerZMQ:
         # Yaw extraction and wrapping.
         yaw_raw = quat_to_yaw(qx, qy, qz, qw)  # (-pi, pi]
         yaw = wrap_to_2pi(yaw_raw)  # [0, 2pi)
+        #yaw = yaw_raw  # keep in (-pi, pi] for angle_diff calculations
 
         # Finite difference to compute world-frame velocities.
         if self._prev_xy is None or self._prev_t is None:
@@ -415,6 +403,7 @@ class MPCControllerZMQ:
             # Attempt to reinitialize the solver with the current state.
             try:
                 self.MPC.reintialize_solver(self.current_pose)
+                next_x = self.current_pose
                 print(f"[MPC] current_pose x= {self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
             except Exception as e:
                 print(f"[MPC] Failed to reinitialize solver: {e}")
@@ -426,7 +415,7 @@ class MPCControllerZMQ:
         #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
         print(f"[MPC] literation count: {stats[3]}")
-        #self.MPC.set_initial_state(next_x)
+        self.MPC.set_initial_state(next_x)
 
         # The MPC returns two control values: the longitudinal jerk (rate of change
         # of acceleration) and the front steering rate.  The original code
