@@ -584,6 +584,8 @@ class MPCControllerZMQ:
                     print(f"[MPC] Global path received with {len(self.ref_traj['pos_x'])} points.")
                 elif msg["type"] == "odom":
                     self._handle_odom(msg)
+                elif msg["type"] == "drive":
+                    self.solver_run_commdand = bool(msg["drive"])
                     #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
 
             # Time management for fixed-rate control execution.
@@ -592,7 +594,7 @@ class MPCControllerZMQ:
                 # Update target time for the next cycle.
                 self._next_control_time = now + self._control_period
 
-                if self._global_path_ready and self._odom_ready:
+                if self._global_path_ready and self._odom_ready and self.solver_run_commdand:
                     cmd = self._solve_mpc()
                     if cmd is not None:
                         # Compose the outgoing message.  In addition to the

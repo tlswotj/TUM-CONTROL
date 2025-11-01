@@ -25,6 +25,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy
 from nav_msgs.msg import Path, Odometry
+from std_msgs.msg import UInt16MultiArray
 from ackermann_msgs.msg import AckermannDriveStamped
 
 # Visualisation of predicted trajectories requires Marker and MarkerArray from
@@ -99,6 +100,9 @@ class ZMQBridgeNode(Node):
         # Subscribe to odom (default reliability)
         self.create_subscription(Odometry, "/odom", self._odom_callback, 10)
 
+        # Subscribe to manual drive command
+        self.create_subscription(UInt16MultiArray, "/rf", self._rf_callback, 1)
+
         # Thread for listening to control commands from ZeroMQ
         self._shutdown = False
         self._listener_thread = threading.Thread(target=self._control_listener, daemon=True)
@@ -150,6 +154,18 @@ class ZMQBridgeNode(Node):
             self.get_logger().warn(f"Failed to publish odom over ZMQ: {e}")
         #self.get_logger().info(f"Published odom at time {t:.3f}, x={data['x']:.2f}, y={data['y']:.2f}")
 
+    def _rf_callback(self, msg: UInt16MultiArray) -> None:
+        drive_command = False
+        if msg.data[5] > 1650:
+            drive_command = True
+        data = {
+            "type": "drive",
+            "drive": drive_command    
+                }
+        try:
+            self._pub.send_string(json.dumps(data))
+        except Exception as e:
+            self.get_logger().warn(f"Failed to publish odom over ZMQ: {e}")
     # ------------------------------------------------------------------
     # ZMQ listener thread
     # ------------------------------------------------------------------
