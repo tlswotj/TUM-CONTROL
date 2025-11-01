@@ -2,11 +2,11 @@ tire_params:
   front:
     Bf: 1.5
     Cf: 1.0
-    Df: 20.313
+    Df: 40.313
     Ef: 0.97
   rear:
     Br: 1.5
     Cr: 1.0
-    Dr: 20.313
+    Dr: 40.313
     Er: 0.97
 mu: 0.65

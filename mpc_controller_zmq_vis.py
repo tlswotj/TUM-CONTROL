@@ -32,7 +32,8 @@ these JSON dictionaries.  See ``ros_zmq_bridge.py`` for details.
 import json
 import math
 import time
-from typing import Any, Dict, Optional, Tuple
+from collections import deque
+from typing import Any, Deque, Dict, Optional, Tuple
 
 import numpy as np
 import zmq
@@ -209,6 +210,7 @@ class MPCControllerZMQ:
         self._prev_yaw_wrapped: Optional[float] = None  # raw yaw in (-pi, pi]
         self._yaw_continuous: Optional[float] = None
         self._prev_v_lon: float = 0.0
+        self._pose_history: Deque[np.ndarray] = deque(maxlen=5)
 
         # Flags indicating whether initial data has been received.
         self._global_path_ready = False
@@ -310,6 +312,14 @@ class MPCControllerZMQ:
         qw = float(msg["qw"])
         t = float(msg["timestamp"])
 
+        # Reject stale odometry samples to keep the state history monotonic.
+        if self._prev_t is not None and t <= self._prev_t:
+            print(
+                f"[MPC] Ignoring out-of-order odom sample: "
+                f"{t:.3f} <= {self._prev_t:.3f}"
+            )
+            return
+
         # Yaw extraction and continuous accumulation.
         yaw_raw = quat_to_yaw(qx, qy, qz, qw)  # (-pi, pi]
         if self._prev_yaw_wrapped is None or self._yaw_continuous is None:
@@ -326,20 +336,32 @@ class MPCControllerZMQ:
             vx_w = 0.0
             vy_w = 0.0
         else:
-            dt = max(t - self._prev_t, 0.0)
-            if dt > 1e-6:
+            dt_candidate = t - self._prev_t
+            if dt_candidate > 1e-6:
+                dt = dt_candidate
                 dx = x - self._prev_xy[0]
                 dy = y - self._prev_xy[1]
                 vx_w = dx / dt
                 vy_w = dy / dt
             else:
+                dt = 0.0
                 vx_w = 0.0
                 vy_w = 0.0
 
         # Rotate world-frame velocities into vehicle frame.
         c, s = math.cos(yaw), math.sin(yaw)
-        v_lon = c * vx_w + s * vy_w
-        v_lat = -s * vx_w + c * vy_w
+        v_lon_raw = c * vx_w + s * vy_w
+        v_lat_raw = -s * vx_w + c * vy_w
+
+        # Smooth velocity components using recent pose history.
+        history = list(self._pose_history)
+        history_len = len(history)
+        if history_len > 0:
+            v_lon = (sum(pose[3] for pose in history) + v_lon_raw) / (history_len + 1)
+            v_lat = (sum(pose[4] for pose in history) + v_lat_raw) / (history_len + 1)
+        else:
+            v_lon = v_lon_raw
+            v_lat = v_lat_raw
 
         # Yaw rate.
         if self._prev_yaw is not None and dt > 1e-6:
@@ -347,11 +369,16 @@ class MPCControllerZMQ:
         else:
             yaw_rate = 0.0
 
-        # Longitudinal acceleration.
+        # Longitudinal acceleration from smoothed longitudinal velocity.
         if dt > 1e-6:
-            a_lon = (v_lon - self._prev_v_lon) / dt
+            a_lon_raw = (v_lon - self._prev_v_lon) / dt
         else:
-            a_lon = 0.0
+            a_lon_raw = 0.0
+
+        if history_len > 0:
+            a_lon = (sum(pose[7] for pose in history) + a_lon_raw) / (history_len + 1)
+        else:
+            a_lon = a_lon_raw
 
         delta_f = self.delta_f
 
@@ -365,6 +392,7 @@ class MPCControllerZMQ:
         self._prev_t = t
         self._prev_yaw = yaw
         self._prev_v_lon = v_lon
+        self._pose_history.append(self.current_pose.copy())
 
         self._odom_ready = True
 
@@ -384,8 +412,9 @@ class MPCControllerZMQ:
         if(self.next_x is None):
             self.next_x = self.current_pose
 
+        prev_next_x = np.copy(self.next_x) if self.next_x is not None else None
         current_ref_idx, current_ref_traj = PlannerEmulator(
-            self.ref_traj, self.next_x, self.N + 1, self.Tp, loop_circuit=self.loop_circuit
+            self.ref_traj, self.current_pose, self.N + 1, self.Tp, loop_circuit=self.loop_circuit
         )
 
         # Set the initial state for the MPC problem.
@@ -404,8 +433,17 @@ class MPCControllerZMQ:
         else:
             status = 0
 
-        if status != 0 or stats[3] <= 1.1:
+        candidate_next_x = pred_X[1, :]
+        same_position = (
+            prev_next_x is not None
+            and math.isclose(float(prev_next_x[0]), float(candidate_next_x[0]), abs_tol=1e-4)
+            and math.isclose(float(prev_next_x[1]), float(candidate_next_x[1]), abs_tol=1e-4)
+        )
+
+        if status != 0 or stats[3] <= 1.1 or same_position:
             print(f"[MPC] acados returned status {status}")
+            if same_position:
+                print("[MPC] Predicted state unchanged; reinitialising solver.")
             # Attempt to reinitialize the solver with the current state.
             try:
                 self.MPC.reintialize_solver(self.current_pose)
@@ -414,12 +452,13 @@ class MPCControllerZMQ:
             except Exception as e:
                 print(f"[MPC] Failed to reinitialize solver: {e}")
             return None
-        next_x = pred_X[1, :]
+        next_x = candidate_next_x
         self.next_x = next_x
         #print(f"[MPC] current_yaw ={next_x[2]:.2f}, target_yaw={current_ref_traj['ref_yaw'][0]:.2f}, yaw_error={angle_diff(next_x[2], current_ref_traj['ref_yaw'][0]):.2f}")
         self.MPC.set_initial_state(self.current_pose)
-        print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
-        #print(f"[MPC] Predicted next state: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}")
+        #, v_lat, yaw_rate, delta_f, a_lon]
+        print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}, v_lat={self.current_pose[4]}, yaw_rate={self.current_pose[5]}, delta_f={self.current_pose[6]}, a_lon={self.current_pose[7]}")
+        print(f"[MPC] Predicted yaw: x={next_x[0]:.2f}, y={next_x[1]:.2f}, yaw={next_x[2]:.2f}, v_lon={next_x[3]:.2f}, v_lat={next_x[4]}, yaw_rate={next_x[5]}, delta_f={next_x[6]}, a_lon={next_x[7]}")
         print(f"[MPC] literation count: {stats[3]}")
         #self.MPC.set_initial_state(next_x)
 
@@ -509,6 +548,14 @@ class MPCControllerZMQ:
                         self._handle_odom(msg)
                         #print(f"[MPC] Odom received: x={self.current_pose[0]:.2f}, y={self.current_pose[1]:.2f}, yaw={self.current_pose[2]:.2f}, v_lon={self.current_pose[3]:.2f}")
         X0_MPC = self.current_pose  # initial state
+        if X0_MPC[2]> math.pi*2 or X0_MPC[2]<0:
+            X0_MPC[2] = math.pi
+
+        X0_MPC[3]=1
+        X0_MPC[4]=0.0
+        X0_MPC[5]=0.0
+        X0_MPC[6]=0.0
+        X0_MPC[7]=0.0
         print(f"[MPC] Initial pose: x={X0_MPC[0]:.2f}, y={X0_MPC[1]:.2f}, yaw={X0_MPC[2]:.2f}, v_lon={X0_MPC[3]:.2f}")
         self.MPC = Model_Predictive_Controller(
             self.config_dir, self.mpc_params_file, self.sim_main_params, X0_MPC
@@ -516,6 +563,7 @@ class MPCControllerZMQ:
         print("[MPC] Initial data received.  Entering control loop.")
 
         # Start periodic control loop.
+        print(X0_MPC)
         self.MPC.reintialize_solver(self.current_pose)
         while True:
             now = time.monotonic()

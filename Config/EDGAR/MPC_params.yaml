@@ -17,12 +17,12 @@ s_vel           : 1
 s_jerk          : 1
 s_steering_rate : 1
 
-q_lon           : 10.2
-q_lat           : 10.2
-q_yaw           : 0.1
+q_lon           : 12.2
+q_lat           : 12.2
+q_yaw           : 0.3
 q_vel           : 0.1
 r_jerk          : 0.1
-r_steering_rate : 0.4
+r_steering_rate : 0.05
 L1_pen          : 1.7
 L2_pen          : 1.9
 
