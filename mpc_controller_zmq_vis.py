@@ -32,8 +32,7 @@ these JSON dictionaries.  See ``ros_zmq_bridge.py`` for details.
 import json
 import math
 import time
-from collections import deque
-from typing import Any, Deque, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import zmq
@@ -138,6 +137,34 @@ def angle_diff(angle: float, reference: float) -> float:
     return diff
 
 
+def low_pass_filter(
+    value: float,
+    previous: Optional[float],
+    alpha: float,
+) -> float:
+    """
+    Apply a first-order low-pass filter y[n] = alpha*x[n] + (1-alpha)*y[n-1].
+
+    Parameters
+    ----------
+    value : float
+        New measurement x[n].
+    previous : float or None
+        Previous filtered output y[n-1]. If None, the raw value is returned.
+    alpha : float
+        Filter coefficient in (0, 1]. Larger alpha reacts faster; smaller alpha
+        smooths more aggressively.
+
+    Returns
+    -------
+    float
+        Filtered output y[n].
+    """
+    if previous is None:
+        return value
+    return alpha * value + (1.0 - alpha) * previous
+
+
 class MPCControllerZMQ:
     """
     A ZeroMQ-based MPC controller.  It closely follows the logic of the
@@ -210,7 +237,17 @@ class MPCControllerZMQ:
         self._prev_yaw_wrapped: Optional[float] = None  # raw yaw in (-pi, pi]
         self._yaw_continuous: Optional[float] = None
         self._prev_v_lon: float = 0.0
-        self._pose_history: Deque[np.ndarray] = deque(maxlen=5)
+        self._filtered_v_lon: Optional[float] = None
+        self._filtered_v_lat: Optional[float] = None
+        self._filtered_a_lon: Optional[float] = None
+        self._filtered_speed: Optional[float] = None
+        self._filtered_steering: Optional[float] = None
+
+        # Low-pass filter coefficients (0 < alpha <= 1).
+        self._lpf_alpha_vel = 0.25
+        self._lpf_alpha_acc = 0.2
+        self._lpf_alpha_speed = 0.8
+        self._lpf_alpha_steering = 0.8
 
         # Flags indicating whether initial data has been received.
         self._global_path_ready = False
@@ -353,15 +390,9 @@ class MPCControllerZMQ:
         v_lon_raw = c * vx_w + s * vy_w
         v_lat_raw = -s * vx_w + c * vy_w
 
-        # Smooth velocity components using recent pose history.
-        history = list(self._pose_history)
-        history_len = len(history)
-        if history_len > 0:
-            v_lon = (sum(pose[3] for pose in history) + v_lon_raw) / (history_len + 1)
-            v_lat = (sum(pose[4] for pose in history) + v_lat_raw) / (history_len + 1)
-        else:
-            v_lon = v_lon_raw
-            v_lat = v_lat_raw
+        # Apply low-pass filtering to reduce noise on velocity estimates.
+        v_lon = low_pass_filter(v_lon_raw, self._filtered_v_lon, self._lpf_alpha_vel)
+        v_lat = low_pass_filter(v_lat_raw, self._filtered_v_lat, self._lpf_alpha_vel)
 
         # Yaw rate.
         if self._prev_yaw is not None and dt > 1e-6:
@@ -375,10 +406,7 @@ class MPCControllerZMQ:
         else:
             a_lon_raw = 0.0
 
-        if history_len > 0:
-            a_lon = (sum(pose[7] for pose in history) + a_lon_raw) / (history_len + 1)
-        else:
-            a_lon = a_lon_raw
+        a_lon = low_pass_filter(a_lon_raw, self._filtered_a_lon, self._lpf_alpha_acc)
 
         delta_f = self.delta_f
 
@@ -392,7 +420,9 @@ class MPCControllerZMQ:
         self._prev_t = t
         self._prev_yaw = yaw
         self._prev_v_lon = v_lon
-        self._pose_history.append(self.current_pose.copy())
+        self._filtered_v_lon = v_lon
+        self._filtered_v_lat = v_lat
+        self._filtered_a_lon = a_lon
 
         self._odom_ready = True
 
@@ -498,8 +528,13 @@ class MPCControllerZMQ:
         # is a 2‑D array of shape (N+1, state_dim); the first two columns
         # represent x and y positions.  Convert to plain Python lists so they
         # can be JSON‑encoded for the ZeroMQ bridge.
-        self.delta_f = next_x[6]
-        v_cmd = next_x[3]+0.9
+        raw_steering = next_x[6]
+        raw_speed = next_x[3] + 0.9
+
+        self.delta_f = low_pass_filter(raw_steering, self._filtered_steering, self._lpf_alpha_steering)
+        v_cmd = low_pass_filter(raw_speed, self._filtered_speed, self._lpf_alpha_speed)
+        self._filtered_steering = self.delta_f
+        self._filtered_speed = v_cmd
         try:
             pred_x_list = pred_X[:, 0].astype(float).tolist()
             pred_y_list = pred_X[:, 1].astype(float).tolist()
